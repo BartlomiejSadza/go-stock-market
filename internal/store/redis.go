@@ -74,7 +74,7 @@ if tonumber(stock) <= 0 then
 	return 0
 end
 redis.call("HINCRBY", KEYS[1], ARGV[1], -1) -- decrement bank
-redis.call("HINCRBY", KEYS[2], ARGV[1], 1   -- increment wallet
+redis.call("HINCRBY", KEYS[2], ARGV[1], 1)   -- increment wallet
 redis.call("RPUSH", KEYS[3], ARGV[2])		-- append audit entry
 redis.call("LTRIM", KEYS[3], -10000, -1)	-- cap log at 10k entries
 return 1
@@ -102,6 +102,56 @@ func (s *Store) Buy(ctx context.Context, walletID, stockName string) (int, error
 	result, err := buyScript.Run(ctx, s.rdb, keys, stockName, string(payload)).Int()
 	if err != nil {
 		return 0, fmt.Errorf("run buy script: %w", err)
+	}
+
+	return result, nil
+}
+
+var sellScript = redis.NewScript(`
+-- Sell script: atomically transfers 1 unit from wallet to bank.
+-- KEYS[1]=bank:stocks, KEYS[2]=wallet:<id>, KEYS[3]=audit:log
+-- ARGV[1]=stock name, ARGV[2]=JSON log entry
+-- Returns: 1=success, 0=wallet empty for this stock, -1=stock unknown
+
+local stock = redis.call("HGET", KEYS[1], ARGV[1])
+if not stock then
+	return -1
+end
+
+local walletStock = redis.call("HGET", KEYS[2], ARGV[1])
+if not walletStock or tonumber(walletStock) <= 0 then
+	return 0
+end
+
+redis.call("HINCRBY", KEYS[2], ARGV[1], -1) -- wallet -1
+redis.call("HINCRBY", KEYS[1], ARGV[1], 1)	-- bank +1
+redis.call("RPUSH", KEYS[3], ARGV[2])
+redis.call("LTRIM", KEYS[3], -10000, -1)
+return 1
+`)
+
+// Sell mirrors Buy intentionally. "Three strikes, and you refactor" (Fowler, "Refactoring", 1999). :)
+//
+// Returns 1 = success, 0 = wallet empty, -1 = stock unknown.
+func (s *Store) Sell(ctx context.Context, walletID, stockName string) (int, error) {
+	entry := model.LogEntry{
+		Type:      "sell",
+		WalletID:  walletID,
+		StockName: stockName,
+	}
+	payload, err := json.Marshal(entry)
+	if err != nil {
+		return 0, fmt.Errorf("marshal log entry: %w", err)
+	}
+
+	keys := []string{
+		"bank:stocks",
+		"wallet:" + walletID,
+		"audit:log",
+	}
+	result, err := sellScript.Run(ctx, s.rdb, keys, stockName, string(payload)).Int()
+	if err != nil {
+		return 0, fmt.Errorf("run sell script: %w", err)
 	}
 
 	return result, nil
