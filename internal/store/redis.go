@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -131,8 +132,8 @@ return 1
 `)
 
 // Sell mirrors Buy intentionally. "Three strikes, and you refactor" (Fowler, "Refactoring", 1999). :)
-//
-// Returns 1 = success, 0 = wallet empty, -1 = stock unknown.
+
+// Sell Returns 1 = success, 0 = wallet empty, -1 = stock unknown.
 func (s *Store) Sell(ctx context.Context, walletID, stockName string) (int, error) {
 	entry := model.LogEntry{
 		Type:      "sell",
@@ -155,6 +156,58 @@ func (s *Store) Sell(ctx context.Context, walletID, stockName string) (int, erro
 	}
 
 	return result, nil
+}
+
+// GetWallet GET for /wallets/{id}
+func (s *Store) GetWallet(ctx context.Context, walletID string) ([]model.Stock, error) {
+	raw, err := s.rdb.HGetAll(ctx, "wallet:"+walletID).Result()
+	if err != nil {
+		return nil, fmt.Errorf("get wallet %q: %w", walletID, err)
+	}
+
+	walletStocks := make([]model.Stock, 0, len(raw))
+	for name, quantityStr := range raw {
+		quantity, err := strconv.Atoi(quantityStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse quantity for %q: %w", name, err)
+		}
+		walletStocks = append(walletStocks, model.Stock{
+			Name:     name,
+			Quantity: quantity,
+		})
+	}
+	return walletStocks, nil
+}
+
+// GetWalletStock GET for /wallets/{id}/stocks/{name}
+func (s *Store) GetWalletStock(ctx context.Context, walletID, stockName string) (int, bool, error) {
+	quantity, err := s.rdb.HGet(ctx, "wallet:"+walletID, stockName).Int()
+	if errors.Is(err, redis.Nil) {
+		return 0, false, nil // there's no stock, but it's not an error
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("get wallet stock %q: %w", stockName, err)
+	}
+
+	return quantity, true, nil
+}
+
+// GetLog GET for /log
+func (s *Store) GetLog(ctx context.Context) ([]model.LogEntry, error) {
+	rawString, err := s.rdb.LRange(ctx, "audit:log", 0, -1).Result()
+	if err != nil {
+		return nil, fmt.Errorf("get logs: %w", err)
+	}
+
+	entries := make([]model.LogEntry, 0, len(rawString))
+	for _, str := range rawString {
+		var entry model.LogEntry
+		if err := json.Unmarshal([]byte(str), &entry); err != nil {
+			return nil, fmt.Errorf("unmarshal log entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
 }
 
 func (s *Store) Close() error {
