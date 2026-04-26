@@ -1,0 +1,17 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go binary etc.
+/cmd/server/server
+*.exe
+
+# Local notes (recruitment task internal docs)
+INSTRUKCJA.md
+ZADANIE_ANALIZA.md
+.git.backup/
