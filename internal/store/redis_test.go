@@ -539,3 +539,58 @@ func TestBuy_Concurrent(t *testing.T) {
 		t.Errorf("log length: got %d, want: %d", len(gotLog), bankStart)
 	}
 }
+
+func TestGetLog_Cap(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	const cap = 10000
+	const buys = cap + 1
+
+	bankStocks := []model.Stock{
+		{Name: "AAPL", Quantity: buys},
+	}
+	if err := s.SetBankStocks(ctx, bankStocks); err != nil {
+		t.Fatalf("SetBankStocks failed: %v", err)
+	}
+
+	for i := 0; i < buys; i++ {
+		walletID := fmt.Sprintf("wallet-%d", i)
+		status, err := s.Buy(ctx, walletID, "AAPL")
+		if err != nil {
+			t.Fatalf("Buy iteration %d: %v", i, err)
+		}
+		if status != 1 {
+			t.Fatalf("Buy iteration %d: status %d, want 1", i, status)
+		}
+	}
+
+	gotLog, err := s.GetLog(ctx)
+	if err != nil {
+		t.Fatalf("GetLog failed: %v", err)
+	}
+
+	if len(gotLog) != cap {
+		t.Errorf("log length: %d, want: %d", len(gotLog), cap)
+	}
+	if len(gotLog) > 0 {
+		wantFirst := model.LogEntry{
+			Type:      "buy",
+			WalletID:  "wallet-1",
+			StockName: "AAPL",
+		}
+		if gotLog[0] != wantFirst {
+			t.Errorf("first entry: got %+v, want %+v", gotLog[0], wantFirst)
+		}
+	}
+	if len(gotLog) > 0 {
+		wantLast := model.LogEntry{
+			Type:      "buy",
+			WalletID:  "wallet-10000",
+			StockName: "AAPL",
+		}
+		if gotLog[len(gotLog)-1] != wantLast {
+			t.Errorf("last entry: got %+v, want %+v", gotLog[len(gotLog)-1], wantLast)
+		}
+	}
+}
