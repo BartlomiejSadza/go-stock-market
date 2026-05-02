@@ -158,7 +158,7 @@ func (s *Store) Sell(ctx context.Context, walletID, stockName string) (int, erro
 	return result, nil
 }
 
-// GetWallet GET for /wallets/{id}
+// GetWallet /wallets/{id}
 func (s *Store) GetWallet(ctx context.Context, walletID string) ([]model.Stock, error) {
 	raw, err := s.rdb.HGetAll(ctx, "wallet:"+walletID).Result()
 	if err != nil {
@@ -179,7 +179,7 @@ func (s *Store) GetWallet(ctx context.Context, walletID string) ([]model.Stock, 
 	return walletStocks, nil
 }
 
-// GetWalletStock GET for /wallets/{id}/stocks/{name}
+// GetWalletStock /wallets/{id}/stocks/{name}
 func (s *Store) GetWalletStock(ctx context.Context, walletID, stockName string) (int, bool, error) {
 	quantity, err := s.rdb.HGet(ctx, "wallet:"+walletID, stockName).Int()
 	if errors.Is(err, redis.Nil) {
@@ -192,7 +192,7 @@ func (s *Store) GetWalletStock(ctx context.Context, walletID, stockName string) 
 	return quantity, true, nil
 }
 
-// GetLog GET for /log
+// GetLog /log
 func (s *Store) GetLog(ctx context.Context) ([]model.LogEntry, error) {
 	rawString, err := s.rdb.LRange(ctx, "audit:log", 0, -1).Result()
 	if err != nil {
