@@ -22,23 +22,19 @@ Recruitment task: a "Simplified Stock Market" REST API. The full spec and design
 
 ## Build / run / test
 
-The repo is in early scaffolding. Most of the binary, Docker, and test infra do not exist yet — do **not** invent commands.
-
-Currently usable:
-
 ```bash
-go build ./...        # compile everything that exists
-go vet ./...          # static checks
-go mod tidy           # sync go.sum (note: go.sum is currently gitignored implicitly — actually untracked)
+go build ./...                 # compile
+go vet ./...                   # static checks
+go test ./...                  # run tests (requires Redis on localhost:6379)
+go build -o server ./cmd/server && ./server -port 8080   # run server
+docker compose up -d           # start Redis
 ```
 
-Planned (per `INSTRUKCJA.md`, not yet implemented — verify before claiming they exist):
+Server flags & env:
+- `-port` (default `8080`)
+- `REDIS_URL` (default `redis://localhost:6379`)
 
-- `cmd/server/` entry point with `-port` flag and `REDIS_URL` env var.
-- `docker compose up` bringing up Redis + 2 Go instances + nginx LB.
-- Tests under `internal/**/_test.go` runnable with `go test ./...`.
-
-When the user adds these, update this section rather than assuming.
+Tests use Redis DB 15 (`redis://localhost:6379/15`) and flush it before each test.
 
 ## Architecture (target state)
 
@@ -63,14 +59,32 @@ Key invariants that drive the design — keep these in mind when reviewing or su
 
 ## Code layout
 
-- `internal/model/` — pure data structs mapped to JSON. No logic. Note: package is `model` (singular); the dir was recently renamed from `models/` — don't reintroduce the plural.
-- `internal/store/` — Redis access layer. Wraps `*redis.Client`, exposes domain-shaped methods (e.g. `SetBankStocks`). Lua scripts for buy/sell will live here.
-- Handlers and `cmd/server` do not exist yet.
+- `cmd/server/main.go` — HTTP server entry point. Currently has `/healthz` only; **HTTP handlers for API endpoints not yet implemented**.
+- `internal/model/` — pure data structs mapped to JSON. No logic. Package is `model` (singular).
+- `internal/store/` — Redis access layer with Lua scripts for atomic buy/sell. All store methods implemented and tested.
+- `internal/store/redis_test.go` — integration tests (concurrent buy, log cap, etc.).
 
-`internal/` is enforced by the Go toolchain — code there cannot be imported from outside this module. That is intentional encapsulation, not a stylistic choice.
+`internal/` is enforced by the Go toolchain — code there cannot be imported from outside this module.
+
+## Implementation status
+
+| Endpoint | Status |
+|----------|--------|
+| `GET /healthz` | ✅ done |
+| `POST /stocks` | store ✅, handler ❌ |
+| `GET /stocks` | store ✅, handler ❌ |
+| `POST /wallets/{id}/stocks/{name}` | store ✅, handler ❌ |
+| `GET /wallets/{id}` | store ✅, handler ❌ |
+| `GET /wallets/{id}/stocks/{name}` | store ✅, handler ❌ |
+| `GET /log` | store ✅, handler ❌ |
+| `POST /chaos` | ❌ |
+
+**Next step:** Add HTTP handlers in `cmd/server/main.go`.
+
+**Remaining for HA:** `docker-compose.yaml` needs 2 Go instances + nginx LB (currently only Redis).
 
 ## Conventions worth preserving
 
 - Errors wrapped with `fmt.Errorf("context: %w", err)` — keep the wrap chain.
-- Redis writes that touch multiple keys use `TxPipeline` (current `SetBankStocks`) or Lua (planned for buy/sell). Don't replace either with naive sequential calls.
+- Redis writes that touch multiple keys use `TxPipeline` (`SetBankStocks`) or Lua scripts (`Buy`, `Sell`). Don't replace with naive sequential calls.
 - Commit messages follow Conventional Commits (`feat:`, `fix:`, …) — see `git log`.
