@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bartlomiejsadza/remitly-stock-market/internal/handler"
 	"github.com/bartlomiejsadza/remitly-stock-market/internal/store"
 )
 
@@ -42,6 +43,8 @@ func main() {
 
 	logger.Info("connected to redis")
 
+	h := handler.New(st, logger)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -50,6 +53,13 @@ func main() {
 		writer.WriteHeader(http.StatusOK)
 		_, _ = writer.Write([]byte("ok"))
 	})
+	mux.HandleFunc("GET /stocks", h.GetStocks)
+	mux.HandleFunc("POST /stocks", h.SetStocks)
+	mux.HandleFunc("GET /wallets/{wallet_id}", h.GetWallet)
+	mux.HandleFunc("GET /wallets/{wallet_id}/stocks/{stock_name}", h.GetWalletStock)
+	mux.HandleFunc("POST /wallets/{wallet_id}/stocks/{stock_name}", h.Trade)
+	mux.HandleFunc("GET /log", h.GetLog)
+	mux.HandleFunc("POST /chaos", h.Chaos)
 
 	server := &http.Server{
 		Addr:         addr,
