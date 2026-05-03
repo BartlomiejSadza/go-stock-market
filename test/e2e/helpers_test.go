@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,8 +12,6 @@ import (
 
 	"github.com/bartlomiejsadza/remitly-stock-market/internal/model"
 )
-
-const baseURL = "http://localhost:8080"
 
 func getJSON[T any](t *testing.T, url string) T {
 	t.Helper()
@@ -33,6 +32,7 @@ func getJSON[T any](t *testing.T, url string) T {
 
 func resetBank(t *testing.T, stocks []model.Stock) {
 	t.Helper()
+	flushTestDB(t)
 	req := model.StocksRequest{Stocks: stocks}
 
 	var buf bytes.Buffer
@@ -79,4 +79,11 @@ func getBody(t *testing.T, resp *http.Response) string {
 
 func uniqueWalletID() string {
 	return fmt.Sprintf("w-%v", time.Now().UnixNano())
+}
+
+func flushTestDB(t *testing.T) {
+	t.Helper()
+	if err := redisClient.FlushDB(context.Background()).Err(); err != nil {
+		t.Fatalf("FlushDB failed: %v", err)
+	}
 }

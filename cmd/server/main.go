@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bartlomiejsadza/remitly-stock-market/internal/handler"
+	"github.com/bartlomiejsadza/remitly-stock-market/internal/router"
 	"github.com/bartlomiejsadza/remitly-stock-market/internal/store"
 )
 
@@ -48,22 +50,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(writer http.ResponseWriter, request *http.Request) {
-		writer.WriteHeader(http.StatusOK)
-		_, _ = writer.Write([]byte("ok"))
-	})
-	mux.HandleFunc("GET /stocks", h.GetStocks)
-	mux.HandleFunc("POST /stocks", h.SetStocks)
-	mux.HandleFunc("GET /wallets/{wallet_id}", h.GetWallet)
-	mux.HandleFunc("GET /wallets/{wallet_id}/stocks/{stock_name}", h.GetWalletStock)
-	mux.HandleFunc("POST /wallets/{wallet_id}/stocks/{stock_name}", h.Trade)
-	mux.HandleFunc("GET /log", h.GetLog)
-	mux.HandleFunc("POST /chaos", h.Chaos)
-
 	server := &http.Server{
 		Addr:         addr,
-		Handler:      mux,
+		Handler:      router.New(h),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -77,7 +66,7 @@ func main() {
 
 	select {
 	case err := <-serverErr:
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("server failed", "err", err)
 			os.Exit(1)
 		}

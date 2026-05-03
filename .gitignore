@@ -9,10 +9,5 @@ Thumbs.db
 
 # Go binary etc.
 /cmd/server/server
+/server
 *.exe
-
-# Local notes (recruitment task internal docs)
-INSTRUKCJA.md
-ZADANIE_ANALIZA.md
-REQUIREMENTS.md
-.git.backup/
