@@ -15,6 +15,12 @@ type Store struct {
 	rdb *redis.Client
 }
 
+var (
+	ErrStockNotFound      = errors.New("stock not found")
+	ErrInsufficientBank   = errors.New("bank has no stock available")
+	ErrInsufficientWallet = errors.New("wallet has no stock to sell")
+)
+
 func New(redisURL string) (*Store, error) {
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
@@ -82,8 +88,8 @@ return 1
 `)
 
 // Buy attempts to transfer 1 unit of stockName from bank to wallet.
-// Returns 1 = success, 0 = bank empty, -1 = stock unknown
-func (s *Store) Buy(ctx context.Context, walletID, stockName string) (int, error) {
+// Returns nil on success, or one of: ErrStockNotFound, ErrInsufficientBank.
+func (s *Store) Buy(ctx context.Context, walletID, stockName string) error {
 	entry := model.LogEntry{
 		Type:      "buy",
 		WalletID:  walletID,
@@ -91,7 +97,7 @@ func (s *Store) Buy(ctx context.Context, walletID, stockName string) (int, error
 	}
 	payload, err := json.Marshal(entry)
 	if err != nil {
-		return 0, fmt.Errorf("marshal log entry: %w", err)
+		return fmt.Errorf("marshal log entry: %w", err)
 	}
 
 	keys := []string{
@@ -102,10 +108,19 @@ func (s *Store) Buy(ctx context.Context, walletID, stockName string) (int, error
 
 	result, err := buyScript.Run(ctx, s.rdb, keys, stockName, string(payload)).Int()
 	if err != nil {
-		return 0, fmt.Errorf("run buy script: %w", err)
+		return fmt.Errorf("run buy script: %w", err)
 	}
 
-	return result, nil
+	switch result {
+	case 1:
+		return nil
+	case 0:
+		return ErrInsufficientBank
+	case -1:
+		return ErrStockNotFound
+	default:
+		return fmt.Errorf("unexpected buy script result: %d", result)
+	}
 }
 
 var sellScript = redis.NewScript(`
@@ -133,8 +148,8 @@ return 1
 
 // Sell mirrors Buy intentionally. "Three strikes, and you refactor" (Fowler, "Refactoring", 1999). :)
 
-// Sell Returns 1 = success, 0 = wallet empty, -1 = stock unknown.
-func (s *Store) Sell(ctx context.Context, walletID, stockName string) (int, error) {
+// Sell returns nil on success, or one of: ErrStockNotFound, ErrInsufficientWallet.
+func (s *Store) Sell(ctx context.Context, walletID, stockName string) error {
 	entry := model.LogEntry{
 		Type:      "sell",
 		WalletID:  walletID,
@@ -142,7 +157,7 @@ func (s *Store) Sell(ctx context.Context, walletID, stockName string) (int, erro
 	}
 	payload, err := json.Marshal(entry)
 	if err != nil {
-		return 0, fmt.Errorf("marshal log entry: %w", err)
+		return fmt.Errorf("marshal log entry: %w", err)
 	}
 
 	keys := []string{
@@ -152,10 +167,19 @@ func (s *Store) Sell(ctx context.Context, walletID, stockName string) (int, erro
 	}
 	result, err := sellScript.Run(ctx, s.rdb, keys, stockName, string(payload)).Int()
 	if err != nil {
-		return 0, fmt.Errorf("run sell script: %w", err)
+		return fmt.Errorf("run sell script: %w", err)
 	}
 
-	return result, nil
+	switch result {
+	case 1:
+		return nil
+	case 0:
+		return ErrInsufficientWallet
+	case -1:
+		return ErrStockNotFound
+	default:
+		return fmt.Errorf("unexpected sell script result: %d", result)
+	}
 }
 
 // GetWallet /wallets/{id}

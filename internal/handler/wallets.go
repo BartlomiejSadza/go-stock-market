@@ -2,11 +2,13 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/bartlomiejsadza/remitly-stock-market/internal/model"
+	"github.com/bartlomiejsadza/remitly-stock-market/internal/store"
 )
 
 func (h *Handler) GetWallet(w http.ResponseWriter, r *http.Request) {
@@ -57,35 +59,26 @@ func (h *Handler) Trade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tradeType := strings.ToLower(req.Type)
-
-	var status int
 	var err error
-
-	switch tradeType {
+	switch strings.ToLower(req.Type) {
 	case "buy":
-		status, err = h.store.Buy(r.Context(), walletID, stockName)
+		err = h.store.Buy(r.Context(), walletID, stockName)
 	case "sell":
-		status, err = h.store.Sell(r.Context(), walletID, stockName)
+		err = h.store.Sell(r.Context(), walletID, stockName)
 	default:
 		http.Error(w, "trade type must be 'buy' or 'sell'", http.StatusBadRequest)
 		return
 	}
 
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	switch status {
-	case 1:
+	switch {
+	case err == nil:
 		w.WriteHeader(http.StatusOK)
-	case 0:
-		http.Error(w, "insufficient stock", http.StatusBadRequest)
-	case -1:
+	case errors.Is(err, store.ErrStockNotFound):
 		http.Error(w, "stock not found", http.StatusNotFound)
+	case errors.Is(err, store.ErrInsufficientBank), errors.Is(err, store.ErrInsufficientWallet):
+		http.Error(w, err.Error(), http.StatusBadRequest)
 	default:
-		h.logger.Error("unexpected status code from store", "status", status)
+		h.logger.Error("trade failed", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
 }

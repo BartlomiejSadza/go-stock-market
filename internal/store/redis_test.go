@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -89,12 +90,8 @@ func TestBuy_Success(t *testing.T) {
 		t.Fatalf("SetBankStocks failed: %v", err)
 	}
 
-	status, err := s.Buy(ctx, "bartek", "AAPL")
-	if err != nil {
-		t.Fatalf("Buy failed, status: %v, err: %v", status, err)
-	}
-	if status != 1 {
-		t.Errorf("Buy status: got %d, want 1", status)
+	if err := s.Buy(ctx, "bartek", "AAPL"); err != nil {
+		t.Fatalf("Buy failed: %v", err)
 	}
 
 	assertBank(t, s, map[string]int{"AAPL": 9})
@@ -113,12 +110,8 @@ func TestBuy_BankEmpty(t *testing.T) {
 		t.Fatalf("SetBankStocks failed: %v", err)
 	}
 
-	status, err := s.Buy(ctx, "bartek", "AAPL")
-	if err != nil {
-		t.Fatalf("Buy failed, status: %v, err: %v", status, err)
-	}
-	if status != 0 {
-		t.Errorf("Buy status: got %d, want 0", status)
+	if err := s.Buy(ctx, "bartek", "AAPL"); !errors.Is(err, ErrInsufficientBank) {
+		t.Errorf("Buy: got %v, want ErrInsufficientBank", err)
 	}
 
 	assertBank(t, s, map[string]int{"AAPL": 0})
@@ -136,16 +129,12 @@ func TestSell_Success(t *testing.T) {
 	if err := s.SetBankStocks(ctx, bankStocks); err != nil {
 		t.Fatalf("SetBankStocks failed: %v", err)
 	}
-	if _, err := s.Buy(ctx, "bartek", "AAPL"); err != nil {
+	if err := s.Buy(ctx, "bartek", "AAPL"); err != nil {
 		t.Fatalf("Buy (setup) failed: %v", err)
 	}
 
-	status, err := s.Sell(ctx, "bartek", "AAPL")
-	if err != nil {
-		t.Fatalf("Sell failed, status: %v, err: %v", status, err)
-	}
-	if status != 1 {
-		t.Errorf("Sell status: got %d, want 1", status)
+	if err := s.Sell(ctx, "bartek", "AAPL"); err != nil {
+		t.Fatalf("Sell failed: %v", err)
 	}
 
 	assertBank(t, s, map[string]int{"AAPL": 10})
@@ -167,12 +156,8 @@ func TestSell_StockUnknown(t *testing.T) {
 		t.Fatalf("SetBankStocks failed: %v", err)
 	}
 
-	status, err := s.Sell(ctx, "bartek", "GOOG")
-	if err != nil {
-		t.Fatalf("Sell failed, status: %v, err: %v", status, err)
-	}
-	if status != -1 {
-		t.Errorf("Sell status: got %d, want -1", status)
+	if err := s.Sell(ctx, "bartek", "GOOG"); !errors.Is(err, ErrStockNotFound) {
+		t.Errorf("Sell: got %v, want ErrStockNotFound", err)
 	}
 
 	assertBank(t, s, map[string]int{"AAPL": 10})
@@ -191,12 +176,8 @@ func TestSell_WalletEmpty(t *testing.T) {
 		t.Fatalf("SetBankStocks failed: %v", err)
 	}
 
-	status, err := s.Sell(ctx, "bartek", "AAPL")
-	if err != nil {
-		t.Fatalf("Sell failed, status: %v, err: %v", status, err)
-	}
-	if status != 0 {
-		t.Errorf("Sell status: got %d, want 0", status)
+	if err := s.Sell(ctx, "bartek", "AAPL"); !errors.Is(err, ErrInsufficientWallet) {
+		t.Errorf("Sell: got %v, want ErrInsufficientWallet", err)
 	}
 
 	assertBank(t, s, map[string]int{"AAPL": 10})
@@ -215,12 +196,8 @@ func TestBuy_StockUnknown(t *testing.T) {
 		t.Fatalf("SetBankStocks failed: %v", err)
 	}
 
-	status, err := s.Buy(ctx, "bartek", "GOOG")
-	if err != nil {
-		t.Fatalf("Buy failed, status: %v, err: %v", status, err)
-	}
-	if status != -1 {
-		t.Errorf("Buy status: got %d, want -1", status)
+	if err := s.Buy(ctx, "bartek", "GOOG"); !errors.Is(err, ErrStockNotFound) {
+		t.Errorf("Buy: got %v, want ErrStockNotFound", err)
 	}
 
 	assertBank(t, s, map[string]int{"AAPL": 10})
@@ -247,18 +224,14 @@ func TestBuy_Concurrent(t *testing.T) {
 		id := i
 		wg.Go(func() {
 			walletID := fmt.Sprintf("wallet-%d", id)
-			status, err := s.Buy(ctx, walletID, "AAPL")
-			if err != nil {
-				t.Errorf("goroutine %d: Buy err: %v", id, err)
-				return
-			}
-			switch status {
-			case 1:
+			err := s.Buy(ctx, walletID, "AAPL")
+			switch {
+			case err == nil:
 				atomic.AddInt64(&successCount, 1)
-			case 0:
+			case errors.Is(err, ErrInsufficientBank):
 				atomic.AddInt64(&failCount, 1)
 			default:
-				t.Errorf("goroutine %d: unexpected status %d", id, status)
+				t.Errorf("goroutine %d: unexpected err: %v", id, err)
 			}
 		})
 	}
@@ -305,12 +278,8 @@ func TestGetLog_Cap(t *testing.T) {
 
 	for i := 0; i < buys; i++ {
 		walletID := fmt.Sprintf("wallet-%d", i)
-		status, err := s.Buy(ctx, walletID, "AAPL")
-		if err != nil {
+		if err := s.Buy(ctx, walletID, "AAPL"); err != nil {
 			t.Fatalf("Buy iteration %d: %v", i, err)
-		}
-		if status != 1 {
-			t.Fatalf("Buy iteration %d: status %d, want 1", i, status)
 		}
 	}
 
