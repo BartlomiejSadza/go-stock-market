@@ -108,7 +108,7 @@ func TestGetSingleStockQuantity(t *testing.T) {
 	defer resp.Body.Close()
 
 	body := getBody(t, resp)
-	if body != "3" {
+	if strings.TrimSpace(body) != "3" {
 		t.Errorf("expected `3`, got `%s`", body)
 	}
 }
