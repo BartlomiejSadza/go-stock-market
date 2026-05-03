@@ -37,6 +37,15 @@ PORT=9000 docker compose up -d      # custom host port
 
 ### Verifying HA
 
+Run the automated check (requires `bash` and `curl` — available natively
+on macOS/Linux, and on Windows via WSL or Git Bash):
+
+```bash
+./verify-ha.sh
+```
+
+Or manually:
+
 ```bash
 docker compose up -d
 curl -X POST http://localhost:8080/chaos    # kill one instance
@@ -54,6 +63,7 @@ Tests need Redis on `localhost:6379` (DB 15, flushed before each test).
 ```bash
 docker compose up -d redis
 go test ./...
+go test -race ./...     # also run with the race detector
 ```
 
 E2e tests run against an in-process `httptest.Server` — no full stack required.
