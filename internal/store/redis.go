@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/bartlomiejsadza/remitly-stock-market/internal/model"
 	"github.com/redis/go-redis/v9"
@@ -28,7 +29,10 @@ func New(redisURL string) (*Store, error) {
 	}
 	rdb := redis.NewClient(opts)
 
-	if err := rdb.Ping(context.Background()).Err(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
 		_ = rdb.Close()
 		return nil, fmt.Errorf("ping redis: %w", err)
 	}
