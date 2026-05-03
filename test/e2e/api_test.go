@@ -143,8 +143,8 @@ func TestLogRecordsOperations(t *testing.T) {
 func TestSetStocksNegativeQuantity_400(t *testing.T) {
 	body := `{"stocks":[{"name":"AAPL","quantity":-1}]}`
 	resp, _ := http.Post(baseURL+"/stocks", "application/json", strings.NewReader(body))
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400, got %v", resp.StatusCode)
 	}
+	defer resp.Body.Close()
 }

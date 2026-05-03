@@ -22,6 +22,8 @@ var (
 	ErrInsufficientWallet = errors.New("wallet has no stock to sell")
 )
 
+const auditLogCap = 10000
+
 func New(redisURL string) (*Store, error) {
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
@@ -87,7 +89,7 @@ end
 redis.call("HINCRBY", KEYS[1], ARGV[1], -1) -- decrement bank
 redis.call("HINCRBY", KEYS[2], ARGV[1], 1)   -- increment wallet
 redis.call("RPUSH", KEYS[3], ARGV[2])		-- append audit entry
-redis.call("LTRIM", KEYS[3], -10000, -1)	-- cap log at 10k entries
+redis.call("LTRIM", KEYS[3], -tonumber(ARGV[3]), -1)	-- cap log at 10k entries
 return 1
 `)
 
@@ -110,7 +112,7 @@ func (s *Store) Buy(ctx context.Context, walletID, stockName string) error {
 		"audit:log",
 	}
 
-	result, err := buyScript.Run(ctx, s.rdb, keys, stockName, string(payload)).Int()
+	result, err := buyScript.Run(ctx, s.rdb, keys, stockName, string(payload), auditLogCap).Int()
 	if err != nil {
 		return fmt.Errorf("run buy script: %w", err)
 	}
@@ -128,11 +130,6 @@ func (s *Store) Buy(ctx context.Context, walletID, stockName string) error {
 }
 
 var sellScript = redis.NewScript(`
--- Sell script: atomically transfers 1 unit from wallet to bank.
--- KEYS[1]=bank:stocks, KEYS[2]=wallet:<id>, KEYS[3]=audit:log
--- ARGV[1]=stock name, ARGV[2]=JSON log entry
--- Returns: 1=success, 0=wallet empty for this stock, -1=stock unknown
-
 local stock = redis.call("HGET", KEYS[1], ARGV[1])
 if not stock then
 	return -1
@@ -146,7 +143,7 @@ end
 redis.call("HINCRBY", KEYS[2], ARGV[1], -1) -- wallet -1
 redis.call("HINCRBY", KEYS[1], ARGV[1], 1)	-- bank +1
 redis.call("RPUSH", KEYS[3], ARGV[2])
-redis.call("LTRIM", KEYS[3], -10000, -1)
+redis.call("LTRIM", KEYS[3], -tonumber(ARGV[3]), -1)
 return 1
 `)
 
@@ -169,7 +166,7 @@ func (s *Store) Sell(ctx context.Context, walletID, stockName string) error {
 		"wallet:" + walletID,
 		"audit:log",
 	}
-	result, err := sellScript.Run(ctx, s.rdb, keys, stockName, string(payload)).Int()
+	result, err := sellScript.Run(ctx, s.rdb, keys, stockName, string(payload), auditLogCap).Int()
 	if err != nil {
 		return fmt.Errorf("run sell script: %w", err)
 	}

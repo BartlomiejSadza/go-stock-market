@@ -266,8 +266,7 @@ func TestGetLog_Cap(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	const cap = 10000
-	const buys = cap + 1
+	const buys = auditLogCap + 1
 
 	bankStocks := []model.Stock{
 		{Name: "AAPL", Quantity: buys},
@@ -288,8 +287,8 @@ func TestGetLog_Cap(t *testing.T) {
 		t.Fatalf("GetLog failed: %v", err)
 	}
 
-	if len(gotLog) != cap {
-		t.Errorf("log length: %d, want: %d", len(gotLog), cap)
+	if len(gotLog) != auditLogCap {
+		t.Errorf("log length: %d, want: %d", len(gotLog), auditLogCap)
 	}
 	if len(gotLog) > 0 {
 		wantFirst := model.LogEntry{
