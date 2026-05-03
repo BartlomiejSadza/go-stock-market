@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/bartlomiejsadza/remitly-stock-market/internal/model"
@@ -136,5 +137,14 @@ func TestLogRecordsOperations(t *testing.T) {
 	// sell
 	if log.Log[n-1].Type != "sell" || log.Log[n-1].WalletID != "w3" || log.Log[n-1].StockName != "AAPL" {
 		t.Errorf("log[n-1]: expected sell w3 AAPL, got %+v", log.Log[n-1])
+	}
+}
+
+func TestSetStocksNegativeQuantity_400(t *testing.T) {
+	body := `{"stocks":[{"name":"AAPL","quantity":-1}]}`
+	resp, _ := http.Post(baseURL+"/stocks", "application/json", strings.NewReader(body))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %v", resp.StatusCode)
 	}
 }

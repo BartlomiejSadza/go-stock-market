@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/bartlomiejsadza/remitly-stock-market/internal/model"
@@ -26,6 +27,22 @@ func (h *Handler) SetStocks(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
+	}
+
+	seen := make(map[string]struct{}, len(req.Stocks))
+	for i, s := range req.Stocks {
+		if s.Name == "" {
+			http.Error(w, fmt.Sprintf("stocks[%d].name must be not empty", i), http.StatusBadRequest)
+			return
+		}
+		if s.Quantity < 0 {
+			http.Error(w, fmt.Sprintf("stocks[%d].quantity must be >= 0", i), http.StatusBadRequest)
+			return
+		}
+		if _, dupl := seen[s.Name]; dupl {
+			h.logger.Warn("duplicate stock name in POST /stocks, last one wins", "name", s.Name)
+		}
+		seen[s.Name] = struct{}{}
 	}
 
 	if err := h.store.SetBankStocks(r.Context(), req.Stocks); err != nil {
